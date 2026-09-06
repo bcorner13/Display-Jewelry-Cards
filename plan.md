@@ -1,123 +1,133 @@
 # Plan — Display Jewelry Cards
 
-**Status: DRAFT — not yet approved.** Depends on the remaining open questions in `intent.md`
-(interlock mechanism, tier offset, wall margins). `Base.FCStd` now models **one half-tile**
-of the eventual two-tile, 5×4-card assembly (see `intent.md`). The base block + one shelf
-ridge are fully parametric; the actual per-column card slots don't exist yet — the ridge is
-still one continuous full-width feature.
+**Status: DRAFT — not yet approved.** Columns × rows are now modeled and working (3×4,
+audit-clean, survives a `BackHeight` round-trip test). The interlock mechanism is back to
+open (snap-tab tried, rejected, removed). Remaining open questions are in `intent.md`.
 
 ---
 
 ## PARAMETERS
 
-Existing, in `Params.FCStd` `VarSet` (all bound, audit clean as of 2026-09-06):
+Current, in `Params.FCStd` `VarSet` (all bound where used, audit clean as of 2026-09-06):
 
 | Name | Type | Value | Bound to | Concept |
 |---|---|---|---|---|
-| `Width` | `App::PropertyLength` | 210mm | `Sketch.Constraints[10]`, `Pad001.Length` | **This tile's** width (half of the 420mm full-assembly span) |
-| `Depth` | `App::PropertyLength` | 150mm | `Sketch.Constraints[11]` | Base footprint depth (Y) |
-| `LowerBackHeight` | `App::PropertyLength` | 50mm | `Pad.Length` | Base block height (Z) before the ridge |
-| `BackHeight` | `App::PropertyLength` | 30mm | `Sketch001.Constraints[4]` | Extra ridge height above the base |
-| `SlotDepth` | `App::PropertyLength` | 25mm | `Sketch001.Constraints[8]` | Retention-lip shelf run (Y-Z profile) |
-| `SlotHeight` | `App::PropertyLength` | 2mm | `Sketch001.Constraints[13]` | Retention-lip notch height (Y-Z profile) |
-| `SlotSpacing` | `App::PropertyLength` | 3mm | `Sketch001.Constraints[6]` | Retention-lip notch step depth (Y-Z profile) |
-
-**Naming trap to avoid:** `SlotSpacing`/`SlotHeight`/`SlotDepth` describe the *retention-lip
-cross-section* (how a card's top-back edge is caught — a Y-Z profile, extruded the same
-across the whole width). They are **not** the 16mm column-to-column gap. Do not repurpose
-them for column pitch — add distinct variables (below).
-
-To add, once the open questions in `intent.md` are answered:
-
-| Name | Type | Proposed value | Purpose |
-|---|---|---|---|
-| `CardWidth` | `App::PropertyLength` | 60mm | Card short-edge width (confirmed 2026-09-06) |
-| `CardHeight` | `App::PropertyLength` | 90mm | Card standing height (confirmed 2026-09-06) |
-| `ColumnGap` | `App::PropertyLength` | 16mm | Gap between adjacent card slots, edge to edge (confirmed 2026-09-06) — column pitch = `CardWidth + ColumnGap` = 76mm |
-| `ColumnCount` | `App::PropertyInteger` | 5 (full assembly) | Columns in the full 5×4 grid — **per-tile count is not a clean integer** (5 split across 2 tiles down the center column); model the tile from absolute column positions relative to tile center, not a per-tile linear-pattern count |
-| `RowCount` | `App::PropertyInteger` | 4 | Rows (tiers) in the full grid |
-| `RowRise` / `RowSetback` | `App::PropertyLength` | TBD | Per-row Z rise / Y setback for the cascading tiers — depends on the answer to the "tier offset" open question |
-| `CardSlotClearance` | `App::PropertyLength` | TBD | Print-fit slack added to actual card thickness — **do not reuse `SlotHeight`** (that's the existing lip's raw opening spec, a different interface) |
+| `Width` | Length | 200mm | `Sketch.Constraints[10]`, `Pad001.Length`, `Pocket.Length` | Tile width |
+| `Depth` | Length | 150mm | `Sketch.Constraints[11]` | Base footprint depth (Y) |
+| `LowerBackHeight` | Length | 20mm | `Pad.Length` | Base block height (Z) before ramp |
+| `BackHeight` | Length | 30mm | `Sketch001.Constraints[4]` | Ramp's rise |
+| `ShelfDepth` | Length | 15mm | `Sketch003` constraints | Retention-notch horizontal run |
+| `SlotDepth` | Length | 10mm | `Pocket001.Length` | Card slot cut depth |
+| `SlotHeight` | Length | 2mm | `Sketch004.Constraints[9]` | Card slot opening height |
+| `SlotWidth` | Length | 60.2mm | `Sketch004.Constraints[8]` | Card slot width (card + clearance) |
+| `SlotSpacing` | Length | 3mm | `Sketch001.Constraints[6]`, `Sketch004.Constraints[10-11]` | Shared margin concept (legitimate reuse) |
+| `NumColumns` | Integer | 3 | `LinearPattern.Occurrences` | Columns per tile — **wired up 2026-09-06**, was previously dead |
+| `RowPitch` | Length | 35mm | `RowPattern.Offset` | Along-slope row spacing — **provisional** |
+| `RowCount` | Integer | 4 | `RowPattern.Occurrences` | Rows (tiers) |
+| `SnapTabWidth`/`Height`/`Length`/`Clearance` | Length | 14/20/8/0.15mm | — (unused) | Interlock — parked, not deleted |
 
 ---
 
 ## Fixed vs. adjustable
 
-Confirmed 2026-09-06: **card dimensions (60×90mm, standing long-ways) are fixed** — not a
-design variable. `CardWidth`/`CardHeight` above are locked. Everything else — column count,
-column gap, row count, tier offsets, tile split point, margins — is adjustable to make the
-5×4 layout work around that fixed card size.
-
-(A "Sample Card" reference body — three rectangles at a rough, non-final pitch, made to
-confirm card orientation — existed briefly and was deleted 2026-09-06 once its job was
-done. Not present in the model.)
+Card dimensions (60×90mm, standing long-ways) are fixed. Column gap, column count, row
+count, row pitch/tier geometry, tile width, and margins are all adjustable.
 
 ---
 
-## FEATURE TREE (ordered)
+## Column/row pattern — done, with a caveat
 
-1. **Existing, fully parametric** — `Sketch` ("BoxFooter", `Width`×`Depth`) → `Pad` (base
-   block, `LowerBackHeight`) → `Sketch001` ("SideProfile", full-width retention-lip profile,
-   `BackHeight`/`SlotHeight`/`SlotSpacing`/`SlotDepth`) → `Pad001` (ridge, fused across
-   `Width`). This is the **top row's** shelf.
-2. Resolve remaining `intent.md` open questions (interlock mechanism, tier offset, wall
-   margins) — needed before step 3 can be dimensioned correctly.
-3. Add `CardWidth`, `CardHeight`, `ColumnGap`, `ColumnCount`, `RowCount` to `Params.FCStd`.
-4. Divide the existing continuous ridge into individual card slots: sketch the per-column
-   dividers/pockets on a datum-plane-attached sketch (not a feature face — hard rule 3),
-   positioned from `CardWidth`/`ColumnGap`, accounting for the center column being split
-   across the two tiles.
-5. Add 3 more tiered rows above/behind the first, each a repeat of the row-1 shelf
-   (`Sketch001`/`Pad001` pattern) offset by `RowRise`/`RowSetback` — confirm whether a
-   `linear_pattern`/`polar_pattern` fits this (uniform per-row offset) or each row needs its
-   own sketch (non-uniform cascading geometry).
-6. Design and add the interlock feature between the two tiles, per the chosen mechanism.
-7. Re-run `python3 scripts/audit_parametric.py` — must be clean.
-8. Fillet/chamfer slot mouths per `CAD_STANDARDS.md` aesthetic guidance (avoid sharp
-   overhangs for Silk filament).
-9. Export STL/3MF to `stl/`/`3mf/` once print-ready — export **both** mirrored tiles.
+Modeled 2026-09-06, audit-clean, `validate_document` all 19 objects healthy, survives a
+`BackHeight` 30→45→30 round-trip test without breaking:
+
+- One card slot (`Sketch004`/`Pocket001`) is cut into the shelf's flat retention-notch
+  surface, then patterned:
+  - **Columns**: `LinearPattern`, `Original`=`Pocket001`, `Direction`=`Sketch004.H_Axis`,
+    `Offset`=`SlotWidth+SlotSpacing*2`, `Occurrences`=`NumColumns`.
+  - **Rows**: `RowPattern`, `Original`=`Pocket001` (**the plain feature, not the column
+    `LinearPattern`**), `BaseFeature`=`LinearPattern` (explicitly chained onto the
+    column-patterned tip), `Direction`=`(Sketch001,['Edge1'])` (the ramp's own diagonal —
+    stays correct at whatever angle `BackHeight` currently gives), `Offset`=`RowPitch`,
+    `Occurrences`=`RowCount`.
+- **FreeCAD limitation found:** a `LinearPattern` cannot take another `LinearPattern` as its
+  `Originals` (confirmed via `Standard_NullObject NULL shape` at trivial scale — not a
+  size/geometry issue). The `Originals`=plain-feature + `BaseFeature`=patterned-tip
+  workaround above is what actually works. `PartDesign::MultiTransform` is the "proper"
+  FreeCAD mechanism for this and wasn't needed once the workaround was found.
+- **Caveat (open question in `intent.md`):** all 4 rows currently cut into **one continuous
+  ramp** at 35mm intervals. This may not be the intended final design — true cascading
+  tiers usually means 4 **separate physical steps**, not 4 cuts into one long slope. `35mm`
+  was chosen only to fit the pattern within the ramp's ~150mm actual length without
+  overshooting it (the first value tried, 60mm, would have cut 3 rows past the ramp's
+  physical extent). Confirm the real design before treating this as final.
+
+Also fixed while working on this (both were silent parametric gaps `audit_parametric.py`
+does **not** check — see `CLAUDE.md` hard rule 1):
+- `Sketch003`("Shelf")'s `AttachmentSupport` had gone empty (frozen, non-tracking
+  placement) — rebuilt with geometry computed directly from the ramp's line equation
+  (`Yb`/`Zt`/`h` formulas in `CLAUDE.md`), verified to track `BackHeight` correctly.
+- `Sketch004`("Slot")'s `AttachmentOffset.Base.z` was a bare literal (47) approximating but
+  not equal to the shelf's real height (46.94) — bound to the exact same expression.
+- The column pattern's `Occurrences` was a plain `3`, with `NumColumns` sitting unused
+  alongside it — bound.
+- Deleted an orphaned `DatumPlane` that was attached to `Pocket.Face12` (a feature face —
+  exactly hard rule 3's warning) and broke the moment `Sketch003` was rebuilt. Confirms the
+  rule isn't theoretical for this project.
 
 ---
 
-## CONSTRAINT STRATEGY
+## Snap-tab interlock — built, then rejected
 
-* Base rectangle (`Sketch`/"BoxFooter") stays fully constrained via `Width`/`Depth` —
-  already done, and already symmetric about the Y-axis (`Symmetric` constraint present from
-  the start), so the tile stays centered as `Width` changes.
-* New slot/column sketches attach to `PartDesign::Plane` datums offset from the base top
-  face — never to `Pad`/`Pocket`/`Body` faces directly (hard rule 3).
-* Every dimensional constraint binds to a Params variable at creation time — no interim
-  literals, even temporarily, per hard rule 1.
-* Column layout comes from `CardWidth`/`ColumnGap` math, not hand-placed per-slot numbers —
-  keeps the pitch a single source of truth across both tiles.
-* The two tiles should be **one parametric definition, mirrored** (e.g. a `Mirror` feature
-  or a shared macro run twice with a mirror flag) rather than two independently-maintained
-  files — avoids the two halves drifting out of sync.
+Modeled 2026-09-06: friction-fit peg (`SnapTabPad`) + pocket (`SnapCatchPocket`), verified
+geometrically correct (volume-diff matched expected cut volume to 3 decimals), datum-
+attached, fully parametric. **Bradley determined it won't hold the two tiles together** and
+deleted it the same day. The `SnapTab*` Params remain in `Params.FCStd`, currently unused —
+parked for a redesign, not deleted. **Do not resume this until columns/rows (above) are
+finalized**, per Bradley's explicit sequencing.
+
+---
+
+## FEATURE TREE (current state)
+
+1. `Sketch`("BoxFooter", `Width`×`Depth`) → `Pad`(`LowerBackHeight`). **Done.**
+2. `Sketch001`("SideProfile", ramp profile, `BackHeight`/`SlotSpacing`) → `Pad001`("AngledTop",
+   `Width`). **Done.**
+3. `Sketch003`("Shelf", retention notch, computed from the ramp equation) → `Pocket`
+   (`Width`). **Done, rebuilt 2026-09-06.**
+4. `Sketch004`("Slot", one card slot, `SlotWidth`/`SlotHeight`/`SlotSpacing`, Z-position
+   bound to the shelf's height) → `Pocket001`(`SlotDepth`). **Done.**
+5. `LinearPattern` (columns, `NumColumns`). **Done.**
+6. `RowPattern` (rows, `RowPitch`/`RowCount`, chained onto the column pattern). **Done,
+   `RowPitch` provisional — see caveat above.**
+7. Resolve the "one continuous ramp vs. discrete stepped tiers" open question — may require
+   reworking steps 2-6 if the answer is "discrete tiers."
+8. Resolve the interlock mechanism (parked).
+9. Fillet/chamfer slot mouths per `CAD_STANDARDS.md` aesthetic guidance.
+10. Export STL/3MF to `stl/`/`3mf/` once print-ready.
 
 ---
 
 ## VALIDATION
 
-* `python3 scripts/audit_parametric.py` must report 0 issues before any commit.
-* Manifold check via `validate_object`/`validate_document` (or `part_check_shape`) after the
-  slot pocket + pattern are added.
-* Bounding box must fit the Creality K2 Plus / ELEGOO Saturn 4 print volumes — confirm the
-  210mm tile width and full tile footprint against actual bed dimensions (the 120×140mm
-  figure in `CAD_STANDARDS.md` was confirmed 2026-09-06 to not apply to this design's
-  tiling decision — verify against the real bed specs before finalizing tile size).
-* Two tiles must physically interlock and reproduce a flush, structurally sound center
-  column when joined — check by assembling both in one document/assembly.
-* Print-verify: one test print in PLA before committing to `SlotHeight`/`CardSlotClearance`/
-  tier-offset final values (per the global workflow — tune after test print, no rework).
+* `python3 scripts/audit_parametric.py` must report 0 issues. **Currently clean** — but see
+  `CLAUDE.md`'s "what it does NOT catch" note; it missed 3 real gaps this session
+  (`AttachmentOffset` literal, dead `NumColumns`, empty `AttachmentSupport`). Manually check
+  new attachments/patterns' `ExpressionEngine`, don't rely on the script alone.
+* `validate_document()`/`validate_object()` after any structural change.
+* For any new Pocket: verify cut direction/volume by diffing `Shape.Volume` before/after.
+* Bounding box must fit the Creality K2 Plus / ELEGOO Saturn 4 print volumes — the
+  120×140mm figure in `CAD_STANDARDS.md` doesn't apply to this design's tiling; verify
+  against real bed specs before finalizing tile size.
+* Two tiles must physically interlock once a mechanism is chosen — check by placing two
+  `App::Link` copies in one assembly, offset by `Width`.
+* Print-verify: one test print in PLA before committing to `SlotHeight`/`SlotWidth`/
+  `RowPitch`/interlock-clearance final values.
 
 ---
 
 ## Execution gate
 
-Per `PROJECT_BOOTSTRAP.md`: **execution is forbidden until this plan is approved.** Steps
-2–9 above touch the FreeCAD model and must not proceed until Bradley confirms:
-(a) the remaining open questions in `intent.md`, and (b) this plan.
-
-(Note: Bradley has been iterating directly in FreeCAD throughout this bootstrap — this plan
-tracks and formalizes that live work rather than gating it; treat each confirmed change as
-approved once made and verified, per the running conversation.)
+Per `PROJECT_BOOTSTRAP.md`: execution proceeds via Bradley's live iteration in FreeCAD, with
+each change verified (audit + `validate_document` + a parametric round-trip test) and
+recorded here as it happens — this plan tracks and formalizes that work rather than gating
+it ahead of time.
