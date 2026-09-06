@@ -1,12 +1,15 @@
 # Project rules — Display Jewelry Cards
 
-This is a countertop comb-style display rack for jewelry cards (earring/necklace cards):
-a base block with a row of vertical slots, one card per slot. **As of 2026-09-06 the project
-passes `audit_parametric.py` clean** — both prior gaps (`Sketch001.Constraints[4]` →
-`BackHeight`, `Pad.Length` → `LowerBackHeight`) were fixed by Bradley directly in FreeCAD,
-each with its own dedicated Params variable rather than reusing an existing one. Keep it
-that way: the next real feature (the actual slot pattern) doesn't exist yet — see Assembly
-architecture below.
+This is a countertop **tiered** display rack for 60×90mm earring cards standing upright
+long-ways (90mm tall) on their short edge — **card dimensions are fixed**; row/column
+counts, spacing, and the tile split are the adjustable levers, not the card size. Cards are
+arranged in a 5-column × 4-row grid (cascading tiers, theater-seating style), built as
+**two mirror-symmetric half-tiles** (~210mm each, split down the center column) rather than
+one 420mm plate, for transport. See `intent.md`/`plan.md` for the full spec and open
+questions (confirmed 2026-09-06). **`Base.FCStd` now models one tile** — `Width` is that
+tile's width (210mm), not the full assembly's. The base block + one shelf ridge are fully
+parametric (`audit_parametric.py` clean); the actual per-column card slots and the other 3
+tiers don't exist yet — see Assembly architecture below.
 
 > **How to use this file:** every `[FILL: …]` marker from the bootstrap template has been
 > filled from direct inspection (MCP + on-disk XML) as of 2026-09-06 — not guessed. Where
@@ -47,21 +50,35 @@ These restate the global rules in `~/.claude/CLAUDE.md` with project-specific co
 
 ## Assembly architecture
 
-**Inferred from the geometry, not yet confirmed against a written spec** (see `intent.md` /
-`plan.md` for the confirmed product intent — countertop comb rack, per Bradley 2026-09-06):
+Confirmed product intent (2026-09-06, see `intent.md`): a countertop rack holding 20
+(5×4) earring cards, 60mm wide × 90mm tall, standing upright. 4 rows are tiered/cascading
+(each set back + up from the one in front). The full 5-column row is built as 2
+mirror-symmetric ~210mm tiles, split through the center column, to stay transportable.
 
-- `Body` (label "Base") is a single `PartDesign::Body` in `Base.FCStd`.
-- `Sketch` (on `XY_Plane`) is a `Width × Depth` rectangle (420mm × 150mm), fully constrained,
-  both dimensions bound to Params.
-- `Pad` extrudes `Sketch` 50mm in +Z — this is the base block. `Length` is bound to
+Current geometry in `Base.FCStd` (one tile; the per-column slots and the other 3 tiers are
+not modeled yet):
+
+- `Body` (label "Base") is a single `PartDesign::Body`.
+- `Sketch` (label "BoxFooter", on `XY_Plane`) is a `Width × Depth` rectangle (210mm × 150mm),
+  fully constrained (incl. a `Symmetric` constraint about the Y-axis present since the
+  start — the tile stays centered as `Width` changes), both dimensions bound to Params.
+  `Width` was 420mm (full assembly) until 2026-09-06, when Bradley changed it to 210mm (one
+  tile) as part of the two-tile split decision.
+- `Pad` extrudes `Sketch` 50mm in +Z — the base block. `Length` is bound to
   `LowerBackHeight` (its own dedicated Param, not reused from `Depth` or `BackHeight`).
-- `Sketch001` (`MapMode=ObjectXZ`, Body-local plane) defines a profile using `SlotHeight`
-  (2mm), `SlotSpacing` (3mm), `SlotDepth` (25mm), and `BackHeight` (30mm, added 2026-09-06)
-  as bound dimensions — fully bound now.
+- `Sketch001` (label "SideProfile", `MapMode=ObjectXZ`, Body-local plane) defines the
+  **row-1 (top row) retention-lip profile** in the Y-Z plane: a flat shelf floor at the top
+  of `Pad` (Z=`LowerBackHeight`), an angled backrest rising toward the back, and a small
+  lip near the back-top edge (`SlotHeight`×`SlotSpacing` notch, `SlotDepth`-long shelf run)
+  that catches a card's top-back edge. Bound to `SlotHeight`/`SlotSpacing`/`SlotDepth`/
+  `BackHeight`. This profile is a **cross-section**, not yet divided into per-card columns.
 - `Pad001` (`BaseFeature=Pad`, additive, direction `-X`, `Length` bound to `Width`) extrudes
-  that profile across the full width, fusing onto `Pad`. This is a single ridge feature, not
-  yet a repeated comb — **the actual row of card slots (presumably a `Pocket` + linear
-  pattern) does not exist in the model yet.**
+  that profile across the tile's full width, fusing onto `Pad`. **Single continuous ridge —
+  no per-column dividers, no other 3 tiers, no interlock feature yet.**
+
+(A "Sample Card" reference body — three 60×90mm rectangles at a rough, non-final pitch —
+existed briefly on 2026-09-06 to confirm card orientation, then was deleted once confirmed.
+Not present in the model; mentioned here only so a future session doesn't go looking for it.)
 
 ---
 
@@ -70,7 +87,7 @@ These restate the global rules in `~/.claude/CLAUDE.md` with project-specific co
 | File | Role | Depends on | Status |
 |---|---|---|---|
 | `Params.FCStd` | VarSet — 7 variables (`Width`, `Depth`, `SlotDepth`, `SlotHeight`, `SlotSpacing`, `BackHeight`, `LowerBackHeight`) | — | ✅ |
-| `Base.FCStd` | Base block + first ridge feature (`Body`/`Sketch`/`Pad`/`Sketch001`/`Pad001`) | `Params.FCStd` | ✅ fully bound, audit clean |
+| `Base.FCStd` | One tile: base block + row-1 shelf (`Body`/`Sketch`/`Pad`/`Sketch001`/`Pad001`) | `Params.FCStd` | ✅ fully bound, audit clean |
 
 No file is ❌ BROKEN.
 
@@ -82,7 +99,7 @@ No file is ❌ BROKEN.
 
 | Variable | Value | Meaning |
 |---|---|---|
-| `Width` | 420mm | Base block width (X) — also drives `Pad001.Length` |
+| `Width` | 210mm | **This tile's** width (X), not the full 5-column assembly's — changed from 420mm by Bradley 2026-09-06 as part of the two-tile split. Also drives `Pad001.Length` |
 | `Depth` | 150mm | Base block depth (Y) |
 | `SlotDepth` | 25mm | How far each card slot cuts in |
 | `SlotHeight` | 2mm | Slot opening height (card thickness + clearance, currently undifferentiated — see hard rule 4) |
@@ -109,10 +126,11 @@ This script flags:
 - Sketches attached to feature faces (DAG risk)
 - Feature dims (`Pad`/`Pocket`/`Chamfer`/`Fillet` `Length`/`Radius`/etc.) set as literals
 
-Baseline as of 2026-09-06 (after fixing a script bug — see below): **0 issues.** Both
-findings from earlier that day (`Sketch001.Constraints[4]`, `Pad.Length`) are now bound to
-dedicated Params variables (`BackHeight`, `LowerBackHeight`). Keep it clean going forward —
-run the audit after any geometry change, before considering it done.
+Baseline as of 2026-09-06 (after fixing a script bug — see below): **0 issues.** The two
+original findings (`Sketch001.Constraints[4]`, `Pad.Length`) are bound to dedicated Params
+variables (`BackHeight`, `LowerBackHeight`). A disposable "Sample Card" reference body
+briefly reintroduced 12 findings and was deleted once it had served its purpose (confirming
+card orientation) — see Assembly architecture.
 
 **Documented script correction (this project's copy only):** the canonical script (and the
 independently-corrected Clocks copy) still carry a DAG-risk regex bug: when a sketch's
