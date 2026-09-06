@@ -3,8 +3,9 @@
 **Status: DRAFT — not yet approved.** Depends on answers to the open questions in
 `intent.md` (card size, capacity, slot pitch, base height). The parameters and feature tree
 below are written against the *existing* geometry (base block + one ridge, no slots cut yet)
-plus the two known parametric gaps. Update this plan once those answers come in, then get
-explicit approval before any further FreeCAD execution.
+plus the one remaining parametric gap (`Sketch001.Constraints[4]` was fixed by Bradley on
+2026-09-06 — see `BackHeight` below). Update this plan once the open questions come in, then
+get explicit approval before any further FreeCAD execution.
 
 ---
 
@@ -19,13 +20,13 @@ Existing, in `Params.FCStd` `VarSet`:
 | `SlotDepth` | `App::PropertyLength` | 25mm | ✅ bound (`Sketch001.Constraints[8]`) |
 | `SlotHeight` | `App::PropertyLength` | 2mm | ✅ bound (`Sketch001.Constraints[13]`) |
 | `SlotSpacing` | `App::PropertyLength` | 3mm | ✅ bound (`Sketch001.Constraints[6]`) |
+| `BackHeight` | `App::PropertyLength` | 30mm | ✅ bound (`Sketch001.Constraints[4]`) — added by Bradley 2026-09-06, fixing the audit finding on this constraint |
 
-To add (fixes the 2 audit findings — names are proposals, confirm before binding):
+To add (fixes the 1 remaining audit finding):
 
 | Name | Type | Default | Purpose |
 |---|---|---|---|
 | `BaseHeight` | `App::PropertyLength` | 50mm | Binds `Pad.Length` — overall base block height (Z) before the ridge feature |
-| `RidgeOffset` *(name TBD)* | `App::PropertyLength` | 30mm | Binds `Sketch001.Constraints[4]` (`DistanceY`) — needs its geometric role traced (likely a vertical offset positioning the ridge profile relative to the base top) before naming it accurately |
 
 To add once slot-cutting is designed (pending `intent.md` answers):
 
@@ -40,9 +41,9 @@ To add once slot-cutting is designed (pending `intent.md` answers):
 ## FEATURE TREE (ordered)
 
 1. **Existing** — `Sketch` (`Width`×`Depth` rectangle) → `Pad` (base block, height currently
-   unbound) → `Sketch001` (ridge profile, one unbound dim) → `Pad001` (ridge, fused).
-2. Add `BaseHeight` and the TBD offset variable to `Params.FCStd`; bind `Pad.Length` and
-   `Sketch001.Constraints[4]` to them via a `macros/bind_base_dims.FCMacro`.
+   unbound) → `Sketch001` (ridge profile, fully bound) → `Pad001` (ridge, fused).
+2. Add `BaseHeight` to `Params.FCStd`; bind `Pad.Length` to it via a
+   `macros/bind_base_height.FCMacro`.
 3. Confirm card size/capacity (open questions in `intent.md`) → add `SlotCount`,
    `CardSlotClearance`, `WallBetweenSlots` to `Params.FCStd`.
 4. Model one slot as a `PartDesign::Pocket` on a datum-plane-attached sketch (not a feature
@@ -71,7 +72,7 @@ To add once slot-cutting is designed (pending `intent.md` answers):
 ## VALIDATION
 
 * `python3 scripts/audit_parametric.py` must report 0 issues before any commit (current
-  baseline: 2 issues, both tracked above as step 2).
+  baseline: 1 issue, tracked above as step 2).
 * Manifold check via `validate_object`/`validate_document` (or `part_check_shape`) after the
   slot pocket + pattern are added.
 * Bounding box must fit the Creality K2 Plus / ELEGOO Saturn 4 beds per `CAD_STANDARDS.md` —

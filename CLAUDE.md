@@ -3,9 +3,9 @@
 This is a countertop comb-style display rack for jewelry cards (earring/necklace cards):
 a base block with a row of vertical slots, one card per slot. **The specific risk in this
 project is incomplete parametrization of the ridge/slot feature** — `Pad.Length` (the base
-block height) is a bare literal, and one dimension inside the slot-profile sketch
-(`Sketch001.Constraints[4]`) is unbound. Both must get real Params variables before any
-further slot-cutting work, per the global no-literals rule.
+block height) is still a bare literal. (`Sketch001.Constraints[4]` was the other unbound
+dim; Bradley bound it to a new `BackHeight` Params var on 2026-09-06.) Fix `Pad.Length`
+before any further slot-cutting work, per the global no-literals rule.
 
 > **How to use this file:** every `[FILL: …]` marker from the bootstrap template has been
 > filled from direct inspection (MCP + on-disk XML) as of 2026-09-06 — not guessed. Where
@@ -17,11 +17,10 @@ further slot-cutting work, per the global no-literals rule.
 
 These restate the global rules in `~/.claude/CLAUDE.md` with project-specific context.
 
-1. **Everything parametric.** Worst offenders right now: `Pad.Length = 50mm` (literal, no
-   Params var) and `Sketch001.Constraints[4]` (`DistanceY = 30mm`, literal). No prior
-   coordinate-edit incident in this project — these are just gaps from work in progress, not
-   damage. Fix by adding Params variables and binding via `setExpression`, never by typing
-   the value back in.
+1. **Everything parametric.** Worst offender right now: `Pad.Length = 50mm` (literal, no
+   Params var). No prior coordinate-edit incident in this project — this is just a gap from
+   work in progress, not damage. Fix by adding a Params variable (e.g. `BaseHeight`) and
+   binding via `setExpression`, never by typing the value back in.
 
 2. **No fixing geometry by editing raw sketch coordinates.** No prior incident in this
    project; rule applies preventively. (The cautionary incident is the Spade Connector
@@ -52,8 +51,8 @@ These restate the global rules in `~/.claude/CLAUDE.md` with project-specific co
 - `Pad` extrudes `Sketch` 50mm in +Z — this is the base block. **`Length` is an unbound
   literal** (issue #1 above).
 - `Sketch001` (`MapMode=ObjectXZ`, Body-local plane) defines a profile using `SlotHeight`
-  (2mm), `SlotSpacing` (3mm), `SlotDepth` (25mm) as bound dimensions, plus one unbound
-  `DistanceY=30mm` (issue #2 above) whose geometric role hasn't been traced yet.
+  (2mm), `SlotSpacing` (3mm), `SlotDepth` (25mm), and `BackHeight` (30mm, added 2026-09-06)
+  as bound dimensions — fully bound now.
 - `Pad001` (`BaseFeature=Pad`, additive, direction `-X`, `Length` bound to `Width`) extrudes
   that profile across the full width, fusing onto `Pad`. This is a single ridge feature, not
   yet a repeated comb — **the actual row of card slots (presumably a `Pocket` + linear
@@ -65,8 +64,8 @@ These restate the global rules in `~/.claude/CLAUDE.md` with project-specific co
 
 | File | Role | Depends on | Status |
 |---|---|---|---|
-| `Params.FCStd` | VarSet — 5 variables (`Width`, `Depth`, `SlotDepth`, `SlotHeight`, `SlotSpacing`) | — | ✅ |
-| `Base.FCStd` | Base block + first ridge feature (`Body`/`Sketch`/`Pad`/`Sketch001`/`Pad001`) | `Params.FCStd` | ⚠️ 2 unbound literals — see audit output below |
+| `Params.FCStd` | VarSet — 6 variables (`Width`, `Depth`, `SlotDepth`, `SlotHeight`, `SlotSpacing`, `BackHeight`) | — | ✅ |
+| `Base.FCStd` | Base block + first ridge feature (`Body`/`Sketch`/`Pad`/`Sketch001`/`Pad001`) | `Params.FCStd` | ⚠️ 1 unbound literal — see audit output below |
 
 No file is ❌ BROKEN.
 
@@ -83,6 +82,7 @@ No file is ❌ BROKEN.
 | `SlotDepth` | 25mm | How far each card slot cuts in |
 | `SlotHeight` | 2mm | Slot opening height (card thickness + clearance, currently undifferentiated — see hard rule 4) |
 | `SlotSpacing` | 3mm | Center-to-center or wall spacing between slots |
+| `BackHeight` | 30mm | Added 2026-09-06 by Bradley; binds `Sketch001.Constraints[4]` — a vertical offset in the ridge profile (exact geometric role still not traced in detail, but no longer an unbound literal) |
 
 Run `python3 scripts/audit_parametric.py --list-params` — **not yet implemented**; enumerate
 manually via the table above or `execute_python` until that flag exists.
@@ -103,9 +103,10 @@ This script flags:
 - Sketches attached to feature faces (DAG risk)
 - Feature dims (`Pad`/`Pocket`/`Chamfer`/`Fillet` `Length`/`Radius`/etc.) set as literals
 
-Baseline as of 2026-09-06 (after fixing a script bug — see below): **2 issues**, both real
-(`Pad.Length` unbound, `Sketch001.Constraints[4]` unbound). Both are open work, not audit
-noise — fix before the next geometry milestone.
+Baseline as of 2026-09-06 (after fixing a script bug — see below): **1 issue**, real
+(`Pad.Length` unbound). `Sketch001.Constraints[4]` was the other finding; Bradley bound it
+to a new `BackHeight` Params var the same day. Fix `Pad.Length` before the next geometry
+milestone.
 
 **Documented script correction (this project's copy only):** the canonical script (and the
 independently-corrected Clocks copy) still carry a DAG-risk regex bug: when a sketch's

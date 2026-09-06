@@ -21,6 +21,7 @@ base block with a row of evenly-spaced vertical slots, one card standing upright
 * **Slot pitch**: `SlotSpacing`=3mm and `SlotHeight`=2mm are already set in `Params.FCStd` —
   confirm these are real target values (card thickness + clearance) and not placeholders.
 * **Base height**: `Pad.Length`=50mm (unbound literal) is the base block height — confirm the
-  intended value so it can be promoted to a real Params variable.
+  intended value so it can be promoted to a real Params variable (proposed name:
+  `BaseHeight`, per `plan.md`).
 * Any branding/engraving on the base (e.g. a logo or shop name), per the Silk-filament
   aesthetic guidance in `CAD_STANDARDS.md`?
