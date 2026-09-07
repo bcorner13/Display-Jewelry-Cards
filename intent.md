@@ -48,8 +48,9 @@ see `CLAUDE.md` hard rule 11).
 * **Connector fit** — `ConnectorClearance`=0.2mm is unverified against an actual print;
   standard first-pass estimate per the project's material-dependent tuning convention (PLA
   vs. ASA shrink rates differ).
-* **`Assembly.FCStd`** — container created but empty; still needs the two tiles + connector
-  actually placed and joint-constrained to verify physical fit before calling the interlock
-  design final.
+* **`Assembly.FCStd`** — populated 2026-09-07: two tiles + two connectors, geometrically
+  verified (0mm³ interference on all 4 pin/pocket pairs, edge-to-edge tile alignment). Not
+  joint-solved, just fixed links — good enough to demonstrate and geometrically confirm the
+  fit; a physical test print is still the real verification.
 * Any branding/engraving on the base, per the Silk-filament aesthetic guidance in
   `CAD_STANDARDS.md`?

@@ -57,9 +57,11 @@ recovery (re-add the same properties; downstream expressions re-resolve automati
 1-6: Base block, ramp, shelf notch (patterned ×7 as steps), card slot (patterned ×3
     columns ×7 rows = 21). **Done** — see `CLAUDE.md` Assembly architecture for the exact
     object names/chain.
-7. Connector pockets (left + right, pin hole + plate recess). **Done.**
-8. Populate `Assembly.FCStd` — place two tile copies + a `ConnectorStrip`, add joints,
-   verify physical fit (pin seats fully, no interference, tiles sit flush at the seam).
+7. Connector pockets, **2 pairs per side** (front + back, torsional rigidity). **Done.**
+8. Populate `Assembly.FCStd` — two tile `App::Link`s + two `ConnectorStrip` `App::Link`s
+   (front/back seam pair). **Done** (2026-09-07) — plain fixed-`Placement` links, not
+   solved joints, but positioned by the same math as the pocket geometry and verified by
+   Boolean intersection (0mm³ interference on all 4 pin/pocket pairs) — see `CLAUDE.md`.
 9. Fillet/chamfer slot mouths and step edges per `CAD_STANDARDS.md` aesthetic guidance
    (avoid sharp overhangs for Silk filament).
 10. Test print (PLA first, per project convention) — verify `SlotHeight`/`SlotWidth`/
@@ -80,8 +82,11 @@ recovery (re-add the same properties; downstream expressions re-resolve automati
 * Bounding box must fit the Creality K2 Plus / ELEGOO Saturn 4 print volumes — the
   120×140mm figure in `CAD_STANDARDS.md` doesn't apply to this design's tiling; verify
   against real bed specs before finalizing tile size.
-* **Assembly fit-check** (not yet done): populate `Assembly.FCStd` with two tiles +
-  connector, confirm the pin fully seats and the tiles sit flush at the seam.
+* **Assembly fit-check — done** (2026-09-07): `Assembly.FCStd` has two tiles + two
+  connectors positioned via the same X/Y math as the pocket geometry; confirmed 0mm³
+  Boolean interference on all 4 pin/pocket pairs and edge-to-edge tile alignment (no gap,
+  no overlap). Not joint-solved (plain fixed links) — sufficient for a geometric fit-check,
+  not a substitute for the physical print-verify step below.
 * Print-verify: one test print in PLA before committing to `SlotHeight`/`SlotWidth`/
   `RowPitch`/`ConnectorClearance` final values.
 

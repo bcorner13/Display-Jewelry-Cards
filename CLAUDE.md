@@ -221,9 +221,27 @@ then was deleted. Not present in the model.)
 
 ### `Assembly.FCStd`
 
-An `Assembly::AssemblyObject` container Bradley started (empty as of 2026-09-07 — no bodies
-linked in yet, no joints defined). Intended for physically verifying the two-tile +
-connector fit (per `plan.md`'s validation section) — not yet populated.
+An `Assembly::AssemblyObject` container. **Populated 2026-09-07** — a fit-check demo, not a
+constraint-solved assembly (no `Joints` used; each part is a plain `App::Link` with a fixed
+`Placement`, positioned by the same math the pockets/connector geometry itself uses, not by
+eyeballing):
+
+- `TileA` = `App::Link` → `Base.FCStd#Body`, `Placement`=origin.
+- `TileB` = `App::Link` → `Base.FCStd#Body`, `Placement.Base.x`=`Width`(198.6mm) — so
+  `TileA`'s right edge (`X=Width/2`) and `TileB`'s left edge coincide exactly, edge-to-edge,
+  no gap or overlap (verified: `TileA` spans X −99.3→99.3, `TileB` spans 99.3→297.9).
+- `ConnectorFront`/`ConnectorBack` = `App::Link` → `ConnectorStrip.FCStd#Body`,
+  `Placement.Base`=`(Width/2, ±ConnectorPairOffset, 0)` — sits at the seam X, at each pocket
+  pair's Y, Z=0 (flush with both tiles' bottoms, no rotation needed since the connector's
+  own pins already point +Z, matching the pockets' cut direction).
+- **Verified by Boolean intersection, not just visual placement**: `TileA.Shape.common(
+  ConnectorFront.Shape)`, `TileB.Shape.common(ConnectorFront.Shape)`, and the same for
+  `ConnectorBack`, all return **0mm³** — the pins sit fully inside their pockets with the
+  intended `ConnectorClearance` gap, zero material interference, confirmed geometrically
+  rather than assumed from the render.
+- Demonstrates: two identical tiles joined into a 6-column × 7-row combined display, two
+  `ConnectorStrip`s bridging the seam (one per pocket pair), 4 outer pockets left
+  unused/visible (would engage a 3rd tile if the display were extended).
 
 ---
 
@@ -234,7 +252,7 @@ connector fit (per `plan.md`'s validation section) — not yet populated.
 | `Params.FCStd` | VarSet — ~22 variables | — | ✅ |
 | `Base.FCStd` | One tile: base + stepped ramp (7 rows × 3 cols) + 4 connector pockets (2 pairs/side, 36 objects) | `Params.FCStd` | ✅ audit clean |
 | `ConnectorStrip.FCStd` | Bridging connector, 2 pins | `Params.FCStd` | ✅ audit clean |
-| `Assembly.FCStd` | Empty assembly container (WIP, not yet populated) | — | ✅ (trivially, nothing to break yet) |
+| `Assembly.FCStd` | Fit-check demo: 2 tiles + 2 connectors via `App::Link`, verified zero interference | `Base.FCStd`, `ConnectorStrip.FCStd` | ✅ populated 2026-09-07 |
 
 No file is ❌ BROKEN.
 
