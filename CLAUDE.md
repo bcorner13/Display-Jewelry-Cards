@@ -1,14 +1,15 @@
 # Project rules — Display Jewelry Cards
 
 This is a countertop **tiered** display rack for 60×90mm earring cards standing upright
-long-ways (90mm tall) on their short edge — **card dimensions are fixed**; row/column
-counts, spacing, and the tile split are the adjustable levers, not the card size. Built as
-**two identical tiles** (~200mm each — same part twice, not mirrored), for transport.
-**Snap-tab interlock was tried and rejected 2026-09-06** ("won't hold them together") and
-removed — deferred until columns/rows are settled; see Assembly architecture. As of
-2026-09-06 the model has one continuous sloped shelf (`SideProfile`/`AngledTop`) with a
-retention notch (`Shelf`/`Pocket`) and a card slot (`Slot`/`Pocket001`), patterned across
-**3 columns** and **4 cascading rows** — `audit_parametric.py` clean.
+long-ways on their short edge — **card dimensions are fixed**; row/column counts, spacing,
+and the tile split are the adjustable levers. Built as **two identical tiles** (same part
+printed twice, not mirrored), joined underneath by a separate **connector strip**
+(`ConnectorStrip.FCStd`) with pins that seat in matching pockets cut into each tile's
+bottom, left and right. As of 2026-09-07: **3 columns × 7 rows** of card slots, cut as
+actual **discrete stepped tiers** (a real staircase — Bradley's redesign, not a continuous
+ramp with cuts at intervals), plus the two bottom connector pockets. `audit_parametric.py`
+clean across all 4 project files (`Base.FCStd`, `Params.FCStd`, `ConnectorStrip.FCStd`,
+`Assembly.FCStd`).
 
 > **How to use this file:** every `[FILL: …]` marker from the bootstrap template has been
 > filled from direct inspection (MCP + on-disk XML) — not guessed. Where something is
@@ -20,125 +21,170 @@ retention notch (`Shelf`/`Pocket`) and a card slot (`Slot`/`Pocket001`), pattern
 
 These restate the global rules in `~/.claude/CLAUDE.md` with project-specific context.
 
-1. **Everything parametric.** Currently clean (audit passes 0 issues), but this project has
-   now hit the "unbound literal that isn't caught by the audit script" failure mode **twice**:
-   - `Sketch003`("Shelf")'s `AttachmentSupport` had gone empty (see rule 3 below) — the
-     audit script doesn't check for this, only for face-attachment.
-   - `Sketch004`("Slot")'s `AttachmentOffset.Base.z` was a bare literal (`47`, approximating
-     but not equal to the shelf's real flat-surface height `46.94`) — the audit script only
-     checks Pad/Pocket/Chamfer/Fillet numeric properties and sketch *constraints*, **not**
-     `AttachmentOffset` values. Fixed by binding it to the exact same expression that drives
-     the shelf's flat step.
-   - The column `LinearPattern`'s `Occurrences` was a plain `3` that happened to match the
-     `NumColumns` Param — the Param existed but drove nothing. Fixed by binding it.
-   - **Lesson: `audit_parametric.py` is necessary but not sufficient.** It doesn't check
-     `AttachmentOffset` literals or `LinearPattern`/`PolarPattern` `Occurrences`/`Offset`
-     bindings. When adding a new sketch attachment or pattern, manually verify every numeric
-     input is expression-bound — don't rely on the script to catch it.
-   - Earlier near-miss (pre-redesign): binding `Pad.Length` to the existing `Depth` variable
-     instead of a new one — same numeric-literal fix, wrong concept, silently changed
-     geometry as a side effect. Corrected to a dedicated variable. Same lesson: binding to
-     *any* existing Param isn't enough — it has to be the right concept.
+1. **Everything parametric.** Currently clean, but this project has repeatedly hit gaps
+   `audit_parametric.py` doesn't catch — treat it as necessary, not sufficient:
+   - A sketch's `AttachmentSupport` silently going empty (frozen placement, stops tracking
+     anything) — the script only checks for *face*-attachment, not *no* attachment.
+   - `AttachmentOffset` literals (e.g. a bare `47` positioning a sketch) — the script only
+     checks sketch *constraints* and Pad/Pocket/Chamfer/Fillet properties.
+   - `LinearPattern`/`PolarPattern` `Occurrences`/`Offset` left unbound while a same-named
+     Param sits nearby unused (`NumColumns` existed for a session before anything read it).
+   - **A VarSet's own property drifting from a formula used elsewhere.** `Width` was an
+     independent stored value (200mm) while `BoxFooter`'s own footprint constraint was
+     derived (`NumColumns*(SlotWidth+2*SlotSpacing)` = 198.6mm) — a 1.4mm silent mismatch
+     between the footprint and the ramp/pocket extrusions built on `Width`. Fixed by binding
+     `Width` itself to that same formula (a VarSet property can reference its own siblings
+     directly, no `#VarSet.` prefix needed for same-object references).
+   - **Lesson: after adding any new attachment, pattern, or cross-referencing Param, manually
+     check its `ExpressionEngine` and compare any two Params that should stay in sync** —
+     don't rely on the audit script alone.
 
 2. **No fixing geometry by editing raw sketch coordinates.** No prior incident in this
-   project; rule applies preventively. (The cautionary incident is the Spade Connector
-   project, 2026-04-15/16 — documented globally.)
+   project; rule applies preventively.
 
-3. **Attach sketches to datum planes, not feature faces.** This project **hit exactly the
-   failure mode this rule warns about**: an earlier `DatumPlane` was attached to
-   `Pocket.Face12` (a feature face). When `Sketch003`'s geometry was rebuilt, that face
-   reference broke (`validate_document` flagged `DatumPlane` invalid) — confirming
-   face-attachment is fragile here, not just theoretically risky. The `DatumPlane` was
-   unused by anything else and was deleted. Fix pattern used instead: attach to the Body's
-   stable `ObjectXZ`/`YZ_Plane` datums, and if a sketch's geometry needs to track another
-   feature's shape (e.g. the shelf notch tracking the ramp's slope), **compute the geometry
-   parametrically from the same driving Params via expressions** — don't reference the
-   feature's face at all. See Assembly architecture for the exact formula used.
+3. **Attach sketches to datum planes, not feature faces.** Hit this failure mode directly
+   once (an orphaned `DatumPlane` attached to `Pocket.Face12` broke the moment upstream
+   geometry changed) — deleted it, unused by anything real. **Also learned:** retrofitting
+   `MapMode='ObjectXZ'` onto an *existing* sketch (rather than one created fresh with that
+   mode) does not reliably recompute — `Sketch003`'s `Placement` stayed frozen at its old
+   value even with `AttachmentSupport=[]` and a fresh identity `AttachmentOffset`. Fixed by
+   switching to an explicit `YZ_Plane` + `MapMode='FlatFace'` attachment instead — this
+   pattern has proven reliable throughout the project; treat `ObjectXZ` retrofits on
+   existing sketches as unreliable.
 
-4. **Clearance concepts stay decoupled.** `SlotWidth` (60.2mm = 60mm card + 0.2mm total
-   clearance) is the card-slot print-fit dimension. `SnapTabClearance` (0.15mm/side,
-   currently unused — see Assembly architecture) is a *different* mating interface. Don't
-   merge them if/when the interlock work resumes.
+4. **Clearance concepts stay decoupled — now 3 distinct mating interfaces:**
+   - `SlotWidth` (60.2mm) — card-to-slot print fit.
+   - `SnapTabClearance` (0.15mm/side) — **unused**, parked with the rejected snap-tab design.
+   - `ConnectorClearance` (0.2mm/side) — connector-pin-to-pocket print fit. Own dedicated
+     Param; do not merge with the other two.
 
-5. **One knob, one concern — reused-but-legitimate case.** `SlotSpacing` (3mm) drives two
-   *different* pieces of geometry (`SideProfile`'s short top-cap segment, and `Slot`'s two
-   side-margin constraints) — this looks like the anti-pattern the rule warns about, but
-   both uses represent the same real concept (a consistent small wall/margin thickness), so
-   it's being treated as legitimate reuse rather than a collision. If the two ever need to
-   diverge, split it into two Params then.
+5. **One knob, one concern — one deliberate reuse.** `SlotSpacing` (3mm) drives both
+   `SideProfile`'s top-cap segment and `Slot`'s side margins — same real concept (a
+   consistent small margin), treated as legitimate reuse, not a collision. If they ever need
+   to diverge, split it.
+
+6. **Coordinate sign conventions differ by attachment mode — verify, don't assume.**
+   `Sketch001`'s `ObjectXZ` mode and a `YZ_Plane`/`FlatFace` sketch map local-X to global-Y
+   with **opposite signs** (`Sketch001` local `(75,20)`→global `Y=-75`; a `YZ_Plane` sketch's
+   local `x=+7`→global `Y=+7`). Copying coordinate *values* from one sketch's local frame
+   into a different sketch attached a different way — even to "the same plane" — silently
+   mirrors the geometry. Caused a real bug: a rebuilt `Shelf` notch computed with the wrong
+   sign landed entirely in empty air (0mm³ removed, verified valid shape that just cut
+   nothing). **Always verify a new sketch's actual global `Placement`/`Shape.BoundBox`
+   against a known-good reference point before trusting copied coordinate values.**
+
+7. **A `PartDesign::Pocket`/`Pad` that has had its properties (`BaseFeature`, `Reversed`,
+   `Profile`, etc.) reassigned multiple times during interactive debugging can get stuck in
+   a bad state that produces `Standard_NullObject … NULL shape` errors even though the
+   underlying geometry is completely valid** (confirmed: identical raw `Part.cut()` between
+   the same two shapes succeeded every time; only the `PartDesign::Pocket` *feature* wrapping
+   it failed). **The reliable fix is delete-and-recreate fresh, not further mutation** — this
+   cost significant debugging time twice in this project (once on `Sketch003`'s original
+   fix, once on the connector pockets) before the pattern was recognized. When a `PartDesign`
+   feature gives a NULL-shape error, don't just toggle `Reversed`/`Length` repeatedly on the
+   same object — after 1-2 tries, delete it and rebuild fresh.
+
+8. **PartDesign features created via raw scripting don't auto-manage `ViewObject.Visibility`**
+   the way the GUI/typed tools do. After adding a new tip feature, explicitly hide the old
+   tip and show the new one (`obj.ViewObject.Visibility`) — otherwise the 3D view keeps
+   showing a stale intermediate feature, which looks exactly like "the geometry doesn't
+   exist" even though it computed correctly. This caused real confusion (Bradley: "where are
+   the steps and slots") when a correct `RowPattern` result existed but an earlier `Pocket`
+   was still the visible one.
+
+9. **`validate_document`/`validate_object`'s "non-positive volume" warning on a
+   `Sketcher::SketchObject` is a false positive** — sketches are 2D wires/faces with no
+   volume by definition. Don't treat it as a real defect; check the downstream solid
+   feature's `Shape.isValid()`/`Volume` instead.
 
 ---
 
 ## Assembly architecture
 
-Confirmed product intent (see `intent.md`): a countertop rack of 60×90mm earring cards,
-standing upright, in a grid of **3 columns × 4 cascading rows** (12 cards, one tile).
+Confirmed product intent (see `intent.md`): a countertop rack of 60×90mm earring cards in a
+**3-column × 7-row** grid (21 slots/tile), tiered as **real discrete stepped tiers**
+(Bradley's redesign — each row is its own physical stair step, not a cut into one
+continuous ramp). Two identical tiles join underneath via a separate connector strip.
 
-Current geometry in `Base.FCStd` (one tile — 19 objects):
+### `Base.FCStd` (one tile, 28 objects)
 
-- `Body` → `Sketch` ("BoxFooter", `XY_Plane`, `Width`×`Depth` rectangle, 200mm×150mm) →
-  `Pad` (base block, `Length`=`LowerBackHeight`=20mm).
-- `Sketch001` ("SideProfile", `MapMode=ObjectXZ`, body-local datum — no `AttachmentSupport`
-  needed, zero DAG risk) → `Pad001` ("AngledTop", `Length`=`Width`, additive, fused onto
-  `Pad`). A 3-segment profile in the flat Y-Z plane (**not tilted** — the slope comes from
-  the profile's own diagonal line, not a rotated sketch plane): front-bottom corner
-  `(Depth/2, LowerBackHeight)` → back-top corner `(-(Depth/2-SlotSpacing), LowerBackHeight+
-  BackHeight)` [the diagonal ramp] → back wall down to `(-(Depth/2-SlotSpacing), LowerBackHeight)`...
-  actually the short cap closes at the *very* back edge; see live geometry for exact
-  ordering. Bound to `BackHeight`/`SlotSpacing`.
-- `Sketch003` ("Shelf", **rebuilt 2026-09-06** — see rule 3) → `Pocket` (the retention notch,
-  `Length`=`Width`). Same flat `ObjectXZ` plane as `SideProfile` — **no face-attachment, no
-  rotation**. A right-triangle wedge at the ramp's back-top corner:
-  - `Yb = -(Depth/2 - SlotSpacing)` (ramp's back Y)
-  - `Zt = LowerBackHeight + BackHeight` (ramp's top Z)
-  - `h = ShelfDepth * BackHeight / (Depth - SlotSpacing)` (drop that lands back exactly on
-    the ramp line — derived, not independently guessed; verified algebraically and by
-    nudging `BackHeight` 30→45→30 and confirming the notch moved and returned correctly)
-  - Corners: `(Yb, Zt)` → `(Yb, Zt-h)` → `(Yb+ShelfDepth, Zt-h)` → close (the closing edge
-    coincides with the tail end of the ramp line itself).
-- `Sketch004` ("Slot", `MapMode=FlatFace`, attached to the **datum** `XY_Plane` — proper,
-  not a feature face) → `Pocket001` (the actual card-holding slot, `Length`=`SlotDepth`).
-  Rectangular, `SlotWidth`(60.2mm)×`SlotHeight`(2mm), positioned at
-  `AttachmentOffset.Base.z` = **the same expression as the Shelf's `h`-offset above**
-  (fixed 2026-09-06 — was a bare literal `47` that merely approximated `46.94`).
-- `LinearPattern` (columns): `Original`=`Pocket001`, `Direction`=`Sketch004.H_Axis`,
-  `Mode=Spacing`, `Offset`=`SlotWidth + SlotSpacing*2`, `Occurrences`=`NumColumns` (3) —
-  **`Occurrences` binding added 2026-09-06**; `NumColumns` existed but drove nothing before.
-- `RowPattern` (rows — **added 2026-09-06**): `Original`=`Pocket001` (the **plain**, single
-  slot feature — **not** the column `LinearPattern` object), `BaseFeature`=`LinearPattern`
-  (chains onto the already-column-patterned tip), `Direction`=`(Sketch001, ['Edge1'])` (the
-  ramp's own diagonal edge — repeats along the slope's exact current angle, whatever
-  `BackHeight` is), `Mode=Spacing`, `Offset`=`RowPitch` (35mm, **provisional** — see below),
-  `Occurrences`=`RowCount` (4).
-  - **Important FreeCAD limitation discovered here:** a `PartDesign::LinearPattern` cannot
-    take *another* `LinearPattern` object as its `Originals` — this produces a
-    `Standard_NullObject … NULL shape` error on recompute, reproduced at trivial scale (2
-    occurrences, 5mm offset), so it's structural, not a scale issue. **Workaround:** set
-    `Originals` to the plain pre-pattern feature (`Pocket001`), and set `BaseFeature`
-    explicitly to the already-patterned tip (`LinearPattern`) so the row-repeat fuses onto
-    the column-patterned result instead of nesting a pattern inside a pattern's `Originals`.
-    `PartDesign::MultiTransform` is the more "proper" FreeCAD mechanism for combining
-    multiple transforms on one feature — not used here; this `BaseFeature`-chaining
-    workaround is simpler and was verified to work (valid shape, correct volume, survives a
-    `BackHeight` round-trip test).
-  - **`RowPitch`=35mm is provisional**, chosen only to fit inside the ramp's actual usable
-    length (~150mm; the ramp's own edge length is ~150.04mm, so 3 steps must total well
-    under that — the first value tried, 60mm, overshot: 3×60=180mm > 150mm ramp length, and
-    the row cuts would land off the physical ramp). This is exactly the **"tier offset" open
-    question in `intent.md`** — not yet a final design decision, just a value that doesn't
-    break geometry.
+- `Body` → `Sketch`("BoxFooter", `XY_Plane`) → `Pad`("BoxFooter001", base block,
+  `Length`=`LowerBackHeight`=15mm). Footprint: `Width`(derived, 198.6mm)×`Depth`(150mm).
+- `Sketch001`("SideProfile", `MapMode=ObjectXZ`, body-local — created fresh this way, so
+  it recomputes reliably; see hard rule 3) → `Pad001`("AngledTop", additive, `Length`=
+  `Width`). The angled backrest profile: `BackHeight`/`SlotSpacing`-driven.
+- `Sketch003`("Shelf", **rebuilt on `YZ_Plane`/`FlatFace`**, not `ObjectXZ` — see hard
+  rule 3) → `Pocket`("Shelf Pocket"): a right-triangle wedge notch at the ramp's back-top
+  corner. Corners derived algebraically from the ramp's own line equation (`Yb`/`Zt`/`h` —
+  see git history for the exact formulas) — no face-attachment, no rotation, purely
+  Params-driven, verified to track `BackHeight` correctly.
+- `Sketch004`("Slot", `MapMode=FlatFace`, attached to the **datum** `XY_Plane`) →
+  `Pocket001`: one card slot, `SlotWidth`×`SlotHeight`, depth `SlotDepth`. Z-position bound
+  to the same expression that drives the Shelf notch's flat step.
+- `LinearPattern`("SlotPattern"): `Original`=`Pocket001`, `Direction`=`Sketch004.H_Axis`,
+  `Mode=Spacing`, `Offset`=`SlotWidth+SlotSpacing*2`, `Occurrences`=`NumColumns`(3) — the
+  3-column repeat.
+- `LinearPattern001`: `Original`=`Pocket`(the Shelf notch, **not** `Pocket001`),
+  `BaseFeature`=`Pocket001`, `Direction`=`(Sketch001,['Edge1'])` (the ramp's own diagonal
+  edge), **`Mode=Extent`**, `Offset`=`Depth`(150mm), `Occurrences`=`RowCount`(7) — repeats
+  the **shelf notch itself** 7 times along the ramp, evenly spread across the ramp's ~full
+  length, creating 7 actual physical stair steps. (Bradley's fix for the "0 rows physically
+  fit" problem I'd hit with a `Spacing`-mode, fixed-per-step-offset approach — `Extent` mode
+  spreads occurrences across a *total* span instead, which is what makes 7 steps fit.)
+- `RowPattern`: `Original`=`Pocket001`(the single slot, plain feature — **not** a pattern
+  object, per the nesting limitation below), `BaseFeature`=`LinearPattern`(chains onto the
+  column-patterned tip), `Direction`=`Edge1`, `Mode=Extent`, `Offset`=`RowPitch`(35mm),
+  `Occurrences`=`RowCount`(7) — repeats the **slot** 7 times to match the 7 physical steps.
+  Verified by volume diff: expanding from 3→21 slots removes exactly 18× one slot's volume.
+  - **FreeCAD limitation confirmed:** a `PartDesign::LinearPattern` cannot take another
+    `LinearPattern` as its `Originals` (`Standard_NullObject NULL shape`, reproduced at
+    trivial scale — structural, not size-related). Workaround used throughout: `Originals`
+    = the plain pre-pattern feature, `BaseFeature` explicitly set to the already-patterned
+    tip. `PartDesign::MultiTransform` is the "proper" mechanism for this; not needed once
+    the workaround was found.
+- **Connector pockets** (added 2026-09-07, chained onto `RowPattern`), one pair per side,
+  each a "keyhole": a deep round pin hole + a shallow rectangular plate recess so the
+  connector sits flush with the tile's bottom:
+  - `ConnectorHoleSketchLeft`/`Right` → `ConnectorPocketLeft`/`Right`: circle, radius
+    `ConnectorRadius+ConnectorClearance`, centered at `X=∓(Width/2-ConnectorInset)`, `Y=0`,
+    on `XY_Plane` (the tile's bottom face, Z=0). Depth `ConnectorPinHeight+
+    ConnectorClearance`.
+  - `ConnectorPlateSketchLeft`/`Right` → `ConnectorPlatePocketLeft`/`Right`: rectangle from
+    the pin hole's outer edge to the tile's edge, width `2×(ConnectorRadius+
+    ConnectorClearance)`, depth `ConnectorBaseThickness+ConnectorClearance`.
+  - All 4 built as **fresh objects in one pass** (create → constrain → bind, no property
+    reassignment afterward) after hitting hard rule 7's NULL-shape issue repeatedly on
+    reused/mutated objects. Verified: total volume removed (2 pins + 2 plates) matches the
+    computed expected value exactly.
+  - Final tip: `ConnectorPlatePocketRight`. `Body.Tip` set explicitly.
 
-**Snap-tab interlock (added, then removed, 2026-09-06):** built a friction-fit peg+pocket
-(`SnapTabSketch`/`SnapTabPad`/`SnapCatchSketch`/`SnapCatchPocket`), verified geometrically
-correct (volume-diff matched to 3 decimals), but Bradley determined it **won't hold the two
-tiles together** and deleted it. Deferred until after columns/rows are settled — a different
-mechanism will be designed then. The `SnapTab*` Params (`SnapTabWidth`/`Height`/`Length`/
-`Clearance`) remain in `Params.FCStd`, currently **unused** — not dead permanently, just
-parked. Don't repurpose them for something else; the interlock work will resume.
+### `ConnectorStrip.FCStd` (separate file, 15 objects)
 
-(A "Sample Card" reference body — three 60×90mm rectangles at a rough, non-final pitch —
-existed briefly on 2026-09-06 to confirm card orientation, then was deleted once confirmed.
-Not present in the model; mentioned here only so a future session doesn't go looking for it.)
+A capsule-shaped bridge: `Sketch`(stadium outline, `ConnectorPinSpan`=30mm between arc
+centers, `ConnectorRadius`=5mm) → `Pad`(`ConnectorBaseThickness`=1mm) + `Sketch001`(circle,
+`Equal`-constrained to the same radius, `Coincident` to the capsule's left arc center) →
+`Pad001`(`ConnectorPinHeight`=5mm boss) → `Chamfer`(`ConnectorChamfer`=1mm) →
+`Mirrored`(across `Sketch.V_Axis`, duplicating the boss to the right end). Fully bound via
+cross-document expressions (`Params#VarSet.ConnectorXxx`) — was **entirely unbound** when
+found this session (5 audit findings), fixed by adding the shared `Connector*` Params.
+
+Two identical printed tiles + one `ConnectorStrip` per seam: each pin (15mm from the
+connector's center) drops into the matching tile's pocket (15mm from that tile's edge) —
+pin-to-pin span (30mm) exactly matches two tiles' combined insets when butted together.
+
+**Snap-tab interlock (tried, then rejected, 2026-09-06):** a friction-fit peg+pocket built
+into the tile itself — Bradley determined it wouldn't hold the tiles together. Superseded
+by the separate `ConnectorStrip` approach above. `SnapTab*` Params remain, unused — not
+deleted, in case revisited.
+
+(A "Sample Card" reference body existed briefly 2026-09-06 to confirm card orientation,
+then was deleted. Not present in the model.)
+
+### `Assembly.FCStd`
+
+An `Assembly::AssemblyObject` container Bradley started (empty as of 2026-09-07 — no bodies
+linked in yet, no joints defined). Intended for physically verifying the two-tile +
+connector fit (per `plan.md`'s validation section) — not yet populated.
 
 ---
 
@@ -146,8 +192,10 @@ Not present in the model; mentioned here only so a future session doesn't go loo
 
 | File | Role | Depends on | Status |
 |---|---|---|---|
-| `Params.FCStd` | VarSet — 14 variables | — | ✅ |
-| `Base.FCStd` | One tile: base + ramp + shelf notch + card slot, patterned 3 cols × 4 rows (19 objects) | `Params.FCStd` | ✅ audit clean, `validate_document` all valid |
+| `Params.FCStd` | VarSet — ~21 variables | — | ✅ |
+| `Base.FCStd` | One tile: base + stepped ramp (7 rows × 3 cols) + 2 connector pockets (28 objects) | `Params.FCStd` | ✅ audit clean |
+| `ConnectorStrip.FCStd` | Bridging connector, 2 pins | `Params.FCStd` | ✅ audit clean |
+| `Assembly.FCStd` | Empty assembly container (WIP, not yet populated) | — | ✅ (trivially, nothing to break yet) |
 
 No file is ❌ BROKEN.
 
@@ -155,78 +203,71 @@ No file is ❌ BROKEN.
 
 ## Params variables (summary)
 
-`Params.FCStd` (`VarSet`), referenced as `<<Params>>#VarSet.VarName`:
+`Params.FCStd` (`VarSet`), referenced as `<<Params>>#VarSet.VarName` (or `Params#VarSet.` in
+same-workbench expressions):
 
-| Variable | Type | Value | Meaning |
-|---|---|---|---|
-| `Width` | Length | 200mm | This tile's width (X) |
-| `Depth` | Length | 150mm | Base footprint depth (Y) |
-| `LowerBackHeight` | Length | 20mm | Base block height (Z) before the ramp — changed from 50mm |
-| `BackHeight` | Length | 30mm | Ramp's rise above the base |
-| `ShelfDepth` | Length | 15mm | Retention-notch horizontal run |
-| `SlotDepth` | Length | 10mm | Card slot cut depth — repurposed from the old retention-lip concept (was 25mm) |
-| `SlotHeight` | Length | 2mm | Card slot opening height — repurposed (was the old lip notch height) |
-| `SlotWidth` | Length | 60.2mm | Card slot width (60mm card + 0.2mm clearance) |
-| `SlotSpacing` | Length | 3mm | Shared: `SideProfile`'s top-cap length AND `Slot`'s side margins (legitimate reuse, see hard rule 5) |
-| `NumColumns` | Integer | 3 | Columns per tile — now actually wired to the column `LinearPattern` |
-| `RowPitch` | Length | 35mm | Along-slope distance between rows — **provisional**, see Assembly architecture |
-| `RowCount` | Integer | 4 | Rows (tiers) |
-| `SnapTabWidth`/`Height`/`Length`/`Clearance` | Length | 14/20/8/0.15mm | Snap-tab interlock — **currently unused**, interlock removed pending redesign |
+| Group | Variables |
+|---|---|
+| Base geometry | `Width`(derived, 198.6mm) · `Depth`(150mm) · `LowerBackHeight`(15mm) · `BackHeight`(30mm) |
+| Shelf/slot | `ShelfDepth`(15mm) · `SlotDepth`(10mm) · `SlotHeight`(2mm) · `SlotWidth`(60.2mm) · `SlotSpacing`(3mm, shared use — hard rule 5) |
+| Pattern | `NumColumns`(3, Integer) · `RowCount`(7, Integer) · `RowPitch`(35mm) |
+| Connector (active) | `ConnectorPinSpan`(30mm) · `ConnectorRadius`(5mm) · `ConnectorPinHeight`(5mm) · `ConnectorBaseThickness`(1mm) · `ConnectorChamfer`(1mm) · `ConnectorClearance`(0.2mm) · `ConnectorInset`(15mm) |
+| Snap-tab (parked, unused) | `SnapTabWidth`(14mm) · `SnapTabHeight`(20mm) · `SnapTabLength`(8mm) · `SnapTabClearance`(0.15mm) |
+
+`Width = NumColumns * (SlotWidth + 2*SlotSpacing)` — **derived, not independent**. If you
+ever need a truly independent tile width again (decoupled from the column math), that's a
+deliberate redesign, not a quick edit — it was made derived specifically to close a real
+drift bug (hard rule 1).
 
 ---
 
 ## How to verify your change didn't break parametric
 
-After any FreeCAD edit, before considering the task done:
-
 ```bash
 python3 scripts/audit_parametric.py
 ```
 
-This script flags:
-- Sketches with 0 constraints
-- Sketches with dimensional constraints lacking expression bindings
-- Sketches attached to feature faces (DAG risk)
-- Feature dims (`Pad`/`Pocket`/`Chamfer`/`Fillet` `Length`/`Radius`/etc.) set as literals
+Flags: unconstrained/underconstrained sketches, unbound dimensional constraints, sketches
+attached to feature faces, unbound Pad/Pocket/Chamfer/Fillet numeric properties.
 
-**What it does NOT catch (confirmed the hard way this project, see hard rule 1):**
-`AttachmentOffset` literals, `LinearPattern`/`PolarPattern` `Occurrences`/`Offset` bindings,
-and a sketch whose `AttachmentSupport` silently went empty (frozen placement) rather than
-pointing at a feature face. After adding/editing an attachment or a pattern, manually check
-its numeric properties and `ExpressionEngine`, don't rely on the script alone.
+**What it does NOT catch** (see hard rule 1 for the full list, learned the hard way):
+`AttachmentOffset` literals, pattern `Occurrences`/`Offset`, a VarSet property that's drifted
+from a formula used elsewhere, and an `AttachmentSupport` that silently went empty. After any
+attachment/pattern/Param change, manually check `ExpressionEngine` and cross-check related
+Params — don't rely on the script alone. Also run `validate_document()`/`validate_object()`
+after structural changes (ignore its sketch "non-positive volume" warning — false positive,
+hard rule 9) and, for any new Pocket, verify by diffing `Shape.Volume` before/after against
+the expected cut volume.
 
-Baseline: **0 issues.** Also run `validate_document()` after structural changes — it caught
-the broken `DatumPlane` (attached to a feature face) that the audit script's regex missed
-because nothing pointed the *sketch itself* there (only an orphaned datum did).
+Baseline: **0 issues across all 4 files.**
 
 **Documented script correction (this project's copy only):** the canonical script (and the
-independently-corrected Clocks copy) still carry a DAG-risk regex bug: when a sketch's
-`AttachmentSupport` is empty, the regex scans past it (DOTALL) and matches the *next*
-`<Link>` element anywhere later in the object. Fixed here by scoping the `<Link>` search to
-the `AttachmentSupport` property's own span. Not yet propagated to the canonical or Clocks
-copies — ask Bradley before doing so. The `DIMENSIONAL_TYPES` enum fix is already included.
+independently-corrected Clocks copy) still carry a DAG-risk regex bug — when a sketch's
+`AttachmentSupport` is empty, the regex matches the *next* `<Link>` anywhere later in the
+object. Fixed here by scoping the search to the `AttachmentSupport` property's own span. Not
+propagated to canonical/Clocks — ask Bradley first. The `DIMENSIONAL_TYPES` enum fix is
+already included (started from the Clocks-corrected version).
 
 No exemptions beyond the standard ones (B-spline `Weight`, 90° `Angle`, inert `Length2`).
 
-**Additional known-broken typed MCP tools (2026-09-06, this FreeCAD 1.1.3 install):**
-- `pad_sketch` throws `AttributeError: 'PartDesign.Feature' object has no attribute
-  'Symmetric'` on every call — use `execute_python` `doc.addObject("PartDesign::Pad", ...)`
-  instead (transaction rolls back cleanly on the failure, no orphaned object).
-- `pocket_sketch`'s default cut direction isn't reliable — verify by diffing `Shape.Volume`
-  before/after against the expected cut volume; don't trust the default `Reversed`.
-- `linear_pattern` (typed tool) only supports axis-aligned `X`/`Y`/`Z` directions and a
-  single `feature_name` — it cannot express a diagonal direction (needed for the row
-  pattern) or multiple `Originals`. Built the row pattern via `execute_python` instead
-  (`doc.addObject("PartDesign::LinearPattern", ...)`, set `Direction`/`Mode`/`Offset`/
-  `Occurrences`/`Originals`/`BaseFeature` directly) — see Assembly architecture for the
-  pattern-of-a-pattern workaround this also required.
+**Known-broken/unreliable typed MCP tools (2026-09-06/07, this FreeCAD 1.1.3 install):**
+- `pad_sketch` throws on every call (`AttributeError: 'PartDesign.Feature' object has no
+  attribute 'Symmetric'`). Use `execute_python` `doc.addObject("PartDesign::Pad", ...)`.
+- `pocket_sketch`'s default `Reversed` direction isn't reliable — verify by volume diff.
+- `linear_pattern` (typed) only supports axis-aligned `X`/`Y`/`Z` and one `feature_name` —
+  can't do a diagonal direction or multiple `Originals`. Build via `execute_python`.
+- `create_sketch` can silently create the sketch in the **wrong document** when multiple
+  open documents have same-named bodies (both `Base` and `ConnectorStrip` have a body named
+  `Body`) and the active document isn't the one you passed `doc_name` for — the tool
+  returned success with no error, but the object appeared in neither document's tree.
+  **Always explicitly target `doc = FreeCAD.getDocument("...")` via `execute_python`** when
+  multiple documents are open, rather than trusting `doc_name` on typed tools.
 
 ---
 
 ## Memory files (deeper context)
 
-No project-scoped memories yet. (Cross-project incident context: the Spade Connector
-coordinate-edit saga in the global memory motivates hard rule #2.)
+No project-scoped memories yet.
 
 ---
 
@@ -234,35 +275,25 @@ coordinate-edit saga in the global memory motivates hard rule #2.)
 
 **Invariant (apply to every FreeCAD project — do not edit):**
 
-- **Inspect/edit FreeCAD models via the MCP bridge — never with shell tools.** Do **not**
-  `unzip`/`grep`/`cat`/`sed`/`strings`/etc. a `.FCStd`. Use the FreeCAD Robust MCP server:
-  `get_connection_status` first, then `open_document`, `list_objects`, `inspect_object`,
-  `execute_python`, and macros. This is **enforced** by a PreToolUse hook in
-  `.claude/settings.json` — raw shell access to `.FCStd` is blocked.
-- **MCP server auto-starts with FreeCAD.** If an `mcp__freecad__*` call fails, the right
-  interpretation is "FreeCAD isn't running" — ask whether to launch it.
-- **Write changes as `macros/*.FCMacro` files**, not direct XML edits — noted as
-  aspirational here; this session's fixes were done interactively via `execute_python`
-  (verifying each step against the live model) rather than pre-written macros, matching how
-  Bradley has been iterating directly in FreeCAD throughout. Worth writing a macro to
-  capture the current final state for re-runnability once the design settles.
-- **Cross-document expressions**: use the canonical form `<<Params>>#VarSet.VarName`.
-- **Run `python3 scripts/audit_parametric.py` before committing** — and see the "what it
-  does NOT catch" note above; it's necessary but not sufficient here.
+- **Inspect/edit FreeCAD models via the MCP bridge — never with shell tools.**
+- **MCP server auto-starts with FreeCAD.**
+- **Write changes as `macros/*.FCMacro` files** — aspirational here; this project's work has
+  been done interactively via `execute_python` (verify-each-step), matching how Bradley
+  iterates directly in FreeCAD. Worth capturing the final state as a macro once it settles.
+- **Cross-document expressions**: canonical form `<<Params>>#VarSet.VarName` (or
+  `Params#VarSet.VarName` inside `execute_python`, which resolves the same way).
+- **Run `python3 scripts/audit_parametric.py` before committing** — necessary, not sufficient.
 
 **Project-specific:**
 
-- `list_documents`'s `is_modified` flag has been observed to report `false` even when the
-  live document differs from the saved file on disk. **Don't trust `is_modified` alone** —
-  if in doubt, save.
-- When rebuilding a sketch whose `AttachmentSupport` has gone empty (frozen placement,
-  MapMode says `FlatFace` but nothing backs it), don't just re-attach to *a* face — check
-  whether the geometry can instead be computed directly from the same Params that drive the
-  feature it needs to track (see the Shelf/Slot fix above). This avoids the face-attachment
-  fragility rule 3 warns about entirely, rather than just relocating it.
-- A `PartDesign::LinearPattern` cannot pattern another `LinearPattern` (confirmed, not
-  scale-dependent) — use the `Originals`=plain-feature + explicit `BaseFeature`=patterned-tip
-  workaround, or `PartDesign::MultiTransform`.
+- `list_documents`'s `is_modified` flag is unreliable — don't trust it, just save.
+- Multiple open documents with same-named bodies (`Base`/`ConnectorStrip` both have `Body`)
+  — always target `execute_python` with an explicit `FreeCAD.getDocument(name)`, don't rely
+  on typed-tool `doc_name` resolution alone.
+- When a `PartDesign::Pocket`/`Pad` gives `Standard_NullObject NULL shape` after 1-2
+  property changes, stop mutating it — delete and recreate fresh (hard rule 7).
+- After creating any new tip feature via raw scripting, explicitly manage
+  `ViewObject.Visibility` (hard rule 8) — nothing does it for you outside the GUI/typed tools.
 
 ---
 
