@@ -5,11 +5,21 @@ long-ways on their short edge — **card dimensions are fixed**; row/column coun
 and the tile split are the adjustable levers. Built as **two identical tiles** (same part
 printed twice, not mirrored), joined underneath by a separate **connector strip**
 (`ConnectorStrip.FCStd`) with pins that seat in matching pockets cut into each tile's
-bottom, left and right. As of 2026-09-07: **3 columns × 7 rows** of card slots, cut as
-actual **discrete stepped tiers** (a real staircase — Bradley's redesign, not a continuous
-ramp with cuts at intervals), plus the two bottom connector pockets. `audit_parametric.py`
-clean across all 4 project files (`Base.FCStd`, `Params.FCStd`, `ConnectorStrip.FCStd`,
-`Assembly.FCStd`).
+bottom — **2 pockets per side** (4 total: left-front, left-back, right-front, right-back,
+symmetric about `Y=0` via `ConnectorPairOffset`), for torsional rigidity. As of 2026-09-07:
+**3 columns × 7 rows** of card slots, cut as actual **discrete stepped tiers** (a real
+staircase — Bradley's redesign, not a continuous ramp with cuts at intervals).
+`audit_parametric.py` clean across all 4 project files (`Base.FCStd`, `Params.FCStd`,
+`ConnectorStrip.FCStd`, `Assembly.FCStd`).
+
+**A live-session data-loss incident happened 2026-09-07**: all 7 `Connector*` VarSet
+properties vanished from the live document (and the saved file) partway through this
+session, while everything else (row/column Params, `Width`, etc.) survived intact —
+mechanism not confirmed, but every expression referencing them kept its formula string and
+just failed to evaluate (`Property 'ConnectorInset' not found...`), silently freezing at
+the last good value rather than erroring loudly in the 3D view. **If any `Connector*`-named
+constraint looks stuck at an old value, check the Report View for "not found" errors before
+assuming your expression edit didn't take** — see hard rule 10.
 
 > **How to use this file:** every `[FILL: …]` marker from the bootstrap template has been
 > filled from direct inspection (MCP + on-disk XML) — not guessed. Where something is
@@ -97,6 +107,30 @@ These restate the global rules in `~/.claude/CLAUDE.md` with project-specific co
    volume by definition. Don't treat it as a real defect; check the downstream solid
    feature's `Shape.isValid()`/`Volume` instead.
 
+10. **A VarSet's dynamic properties can vanish from a live/saved document mid-session**
+    (confirmed 2026-09-07 — see the incident note at the top of this file). All 7
+    `Connector*` properties disappeared while every other Param survived; expressions
+    referencing them kept their formula strings (visible in `ExpressionEngine`) but silently
+    failed to evaluate, leaving the constraint frozen at its last successfully-computed
+    value with **no error in the FreeCAD Python console** — the error only appears in the
+    GUI's Report View (`Property 'X' not found in 'Params#VarSet.X' in property binding
+    ...`). **If an expression edit via `setExpression` doesn't change a constraint's live
+    `.Value` after a recompute, don't assume the recompute needs forcing again — check
+    whether the referenced Param still exists at all** (`"X" in vs.PropertiesList`) before
+    re-debugging the recompute mechanics. Fix is straightforward: re-`addProperty` with the
+    same name/type/value: everything downstream re-resolves automatically once the property
+    exists again, no need to touch the expressions themselves.
+
+11. **A shape that's merely *tangent* to another cut (touching at one point, not
+    overlapping) leaves an uncut sliver, not a smooth merge.** A rectangular pocket built
+    flush against a circular pocket's outer edge (tangent at one point) left a crescent of
+    uncut material everywhere except that single point — looked like a real gap in a
+    render, confirmed by point-containment test. **Fix: make adjoining pocket profiles
+    overlap by starting the straight-edged piece at the round piece's *center*, not its
+    edge** — guarantees no gap regardless of how the two shapes' curvature differs. Applied
+    to all 4 (now 8, after the 2nd pair) connector plate-recess sketches: near edge fixed at
+    `ConnectorInset` distance (the pin's own center X), not `ConnectorInset ± radius`.
+
 ---
 
 ## Assembly architecture
@@ -142,21 +176,26 @@ continuous ramp). Two identical tiles join underneath via a separate connector s
     = the plain pre-pattern feature, `BaseFeature` explicitly set to the already-patterned
     tip. `PartDesign::MultiTransform` is the "proper" mechanism for this; not needed once
     the workaround was found.
-- **Connector pockets** (added 2026-09-07, chained onto `RowPattern`), one pair per side,
-  each a "keyhole": a deep round pin hole + a shallow rectangular plate recess so the
-  connector sits flush with the tile's bottom:
-  - `ConnectorHoleSketchLeft`/`Right` → `ConnectorPocketLeft`/`Right`: circle, radius
-    `ConnectorRadius+ConnectorClearance`, centered at `X=∓(Width/2-ConnectorInset)`, `Y=0`,
-    on `XY_Plane` (the tile's bottom face, Z=0). Depth `ConnectorPinHeight+
+- **Connector pockets** (added 2026-09-07, chained onto `RowPattern`), **2 pairs per side**
+  (4 total — Bradley wanted 2 for torsional rigidity, not the 1 pair first built), each a
+  "keyhole": a deep round pin hole + a shallow rectangular plate recess so the connector
+  sits flush with the tile's bottom. Suffix `2` = the second (back, `Y=-ConnectorPairOffset`)
+  pocket in each pair; unsuffixed = the first (front, `Y=+ConnectorPairOffset`):
+  - `ConnectorHoleSketchLeft`/`Right`[`2`] → `ConnectorPocketLeft`/`Right`[`2`]: circle,
+    radius `ConnectorRadius+ConnectorClearance`, centered at
+    `X=∓(Width/2-ConnectorInset)`, `Y=±ConnectorPairOffset`, on `XY_Plane` (the tile's
+    bottom face, Z=0). Depth `ConnectorPinHeight+ConnectorClearance`.
+  - `ConnectorPlateSketchLeft`/`Right`[`2`] → `ConnectorPlatePocketLeft`/`Right`[`2`]:
+    rectangle from the pin hole's **center** X (not its edge — see hard rule 11, this was
+    a real bug: tangent-only left an uncut gap) out to the tile's edge, width
+    `2×(ConnectorRadius+ConnectorClearance)`, depth `ConnectorBaseThickness+
     ConnectorClearance`.
-  - `ConnectorPlateSketchLeft`/`Right` → `ConnectorPlatePocketLeft`/`Right`: rectangle from
-    the pin hole's outer edge to the tile's edge, width `2×(ConnectorRadius+
-    ConnectorClearance)`, depth `ConnectorBaseThickness+ConnectorClearance`.
-  - All 4 built as **fresh objects in one pass** (create → constrain → bind, no property
+  - All 8 built as **fresh objects in one pass** (create → constrain → bind, no property
     reassignment afterward) after hitting hard rule 7's NULL-shape issue repeatedly on
-    reused/mutated objects. Verified: total volume removed (2 pins + 2 plates) matches the
-    computed expected value exactly.
-  - Final tip: `ConnectorPlatePocketRight`. `Body.Tip` set explicitly.
+    reused/mutated objects. Verified: total volume removed (2 pins + 2 plates per pair,
+    ×2 pairs) matches the computed expected value exactly — 2nd pair's removal is an exact
+    2× multiple of the 1st pair's.
+  - Final tip: `ConnectorPlatePocketRight2`. `Body.Tip` set explicitly.
 
 ### `ConnectorStrip.FCStd` (separate file, 15 objects)
 
@@ -192,8 +231,8 @@ connector fit (per `plan.md`'s validation section) — not yet populated.
 
 | File | Role | Depends on | Status |
 |---|---|---|---|
-| `Params.FCStd` | VarSet — ~21 variables | — | ✅ |
-| `Base.FCStd` | One tile: base + stepped ramp (7 rows × 3 cols) + 2 connector pockets (28 objects) | `Params.FCStd` | ✅ audit clean |
+| `Params.FCStd` | VarSet — ~22 variables | — | ✅ |
+| `Base.FCStd` | One tile: base + stepped ramp (7 rows × 3 cols) + 4 connector pockets (2 pairs/side, 36 objects) | `Params.FCStd` | ✅ audit clean |
 | `ConnectorStrip.FCStd` | Bridging connector, 2 pins | `Params.FCStd` | ✅ audit clean |
 | `Assembly.FCStd` | Empty assembly container (WIP, not yet populated) | — | ✅ (trivially, nothing to break yet) |
 
@@ -208,10 +247,10 @@ same-workbench expressions):
 
 | Group | Variables |
 |---|---|
-| Base geometry | `Width`(derived, 198.6mm) · `Depth`(150mm) · `LowerBackHeight`(15mm) · `BackHeight`(30mm) |
+| Base geometry | `Width`(derived, 198.6mm) · `Depth`(150mm) · `LowerBackHeight`(20mm) · `BackHeight`(20mm) — both changed live by Bradley from the 15/30mm values noted in earlier commits; current values are authoritative |
 | Shelf/slot | `ShelfDepth`(15mm) · `SlotDepth`(10mm) · `SlotHeight`(2mm) · `SlotWidth`(60.2mm) · `SlotSpacing`(3mm, shared use — hard rule 5) |
 | Pattern | `NumColumns`(3, Integer) · `RowCount`(7, Integer) · `RowPitch`(35mm) |
-| Connector (active) | `ConnectorPinSpan`(30mm) · `ConnectorRadius`(5mm) · `ConnectorPinHeight`(5mm) · `ConnectorBaseThickness`(1mm) · `ConnectorChamfer`(1mm) · `ConnectorClearance`(0.2mm) · `ConnectorInset`(15mm) |
+| Connector (active) | `ConnectorPinSpan`(30mm) · `ConnectorRadius`(5mm) · `ConnectorPinHeight`(5mm) · `ConnectorBaseThickness`(1mm) · `ConnectorChamfer`(1mm) · `ConnectorClearance`(0.2mm) · `ConnectorInset`(15mm) · `ConnectorPairOffset`(50mm, added 2026-09-07 for the 2nd pair) |
 | Snap-tab (parked, unused) | `SnapTabWidth`(14mm) · `SnapTabHeight`(20mm) · `SnapTabLength`(8mm) · `SnapTabClearance`(0.15mm) |
 
 `Width = NumColumns * (SlotWidth + 2*SlotSpacing)` — **derived, not independent**. If you

@@ -10,11 +10,13 @@ ramp. Built and working as of 2026-09-07: **3 columns × 7 rows** (21 card slots
 Built as **two identical tiles** (same part printed twice) rather than one wide plate, for
 transport. **Interlock: a separate connector strip** (`ConnectorStrip.FCStd`) — a
 capsule-shaped bridge with a pin at each end, seating in matching pockets on each tile's
-bottom (left and right, per tile — so any tile, leftmost/middle/rightmost, is the same
-part). This supersedes the earlier snap-tab-built-into-the-tile idea, which Bradley
+bottom — **2 connector pockets per side** (4 total, front+back pair on each edge, for
+torsional rigidity — confirmed 2026-09-07), so any tile, leftmost/middle/rightmost, is the
+same part. This supersedes the earlier snap-tab-built-into-the-tile idea, which Bradley
 determined wouldn't hold well enough and removed (2026-09-06). Both the connector's
 geometry and the tile's receiving pockets are done and audit-clean, built to sit flush with
-the tile's bottom surface.
+the tile's bottom surface (a real tangent-vs-overlap gap bug was found and fixed here —
+see `CLAUDE.md` hard rule 11).
 
 ## Constraints
 

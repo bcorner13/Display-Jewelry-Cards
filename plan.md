@@ -31,11 +31,24 @@ geometry, Shelf/slot, Pattern, Connector, Snap-tab-parked). All bound, audit cle
 
 Replaces the rejected snap-tab (see `intent.md`). `ConnectorStrip.FCStd`: capsule bridge,
 pin at each end (`ConnectorPinSpan`=30mm apart, `ConnectorRadius`=5mm,
-`ConnectorPinHeight`=5mm, chamfered). `Base.FCStd`: two "keyhole" pockets (deep round pin
-hole + shallow rectangular plate recess for a flush fit), 15mm inset (`ConnectorInset`)
-from each tile edge, left and right — symmetric, so any tile works as leftmost/middle/
-rightmost. Verified by volume diff (exact match to the computed expected value) and
-visually (bottom-view screenshot).
+`ConnectorPinHeight`=5mm, chamfered). `Base.FCStd`: **2 pairs of "keyhole" pockets per
+side** (4 total — Bradley wanted 2 per side for torsional rigidity), each pair a deep round
+pin hole + shallow rectangular plate recess for a flush fit, 15mm inset (`ConnectorInset`)
+from each tile edge, symmetric front/back about `Y=0` via `ConnectorPairOffset`(50mm) — so
+any tile works as leftmost/middle/rightmost. Verified by volume diff (exact match to the
+computed expected value, 2nd pair an exact 2× multiple of the 1st) and visually
+(bottom-view screenshot: 4 clean gap-free pockets).
+
+**Fixed a real bug post-first-pass:** the plate recess was originally built tangent to the
+pin hole's *edge*, not overlapping it — left an uncut crescent-shaped sliver everywhere
+except the single tangent point (looked like a visible gap in a render, confirmed by
+point-containment test). Fixed by starting the rectangle at the pin's *center* X instead —
+see `CLAUDE.md` hard rule 11.
+
+**Also hit a live data-loss incident**: all 7 `Connector*` Params vanished mid-session
+(from both the live document and disk) while everything else survived — see `CLAUDE.md`
+hard rule 10 for the symptom (expressions silently frozen, error only in Report View) and
+recovery (re-add the same properties; downstream expressions re-resolve automatically).
 
 ---
 
